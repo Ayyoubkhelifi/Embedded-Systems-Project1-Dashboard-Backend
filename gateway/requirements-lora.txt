@@ -1,0 +1,11 @@
+# Hardware extras for the SX127x LoRa radio on Raspberry Pi (not needed in simulator mode).
+# Install:  pip install -r requirements-lora.txt
+# Note: spidev and RPi.GPIO only build/install on Raspberry Pi OS.
+spidev>=3.6
+RPi.GPIO>=0.7.1
+
+# Community Python binding for the SX1276/SX1278 LoRa modem.
+# Upstream is commonly vendored as `pysx127x`; install from the project
+# checkout if it is not available on your package index:
+#   pip install git+https://github.com/<maintainer>/pySX127x.git
+pySX127x

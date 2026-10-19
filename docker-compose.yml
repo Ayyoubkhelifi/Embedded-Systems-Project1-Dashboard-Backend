@@ -1,0 +1,89 @@
+"""ESS Dashboard — full local/production stack.
+
+Services:
+  db        PostgreSQL 16 with a named volume for data
+  backend   FastAPI (runs alembic migrations + seeds on boot)
+  frontend  Next.js standalone dashboard
+  gateway   LoRa receiver; SIMULATE=true runs the in-container node simulator
+"""
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ess
+      POSTGRES_PASSWORD: ess
+      POSTGRES_DB: ess
+      # POSTGRES_PASSWORD must be overridden from .env in production.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ess -d ess"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Expose the DB only when you need psql/pg_dump from the host.
+    # ports:
+    #   - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      ENV: ${ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://ess:ess@db:5432/ess}
+      SIMULATED_TELEMETRY_REJECTED: ${SIMULATED_TELEMETRY_REJECTED:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-ws://localhost:8000/api/v1}
+        NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-false}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+  gateway:
+    build:
+      context: ./gateway
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:?set GATEWAY_API_KEY in .env}
+      GATEWAY_ID: ${GATEWAY_ID:-primary}
+      SIMULATE: ${SIMULATE:-true}
+      NODE_KEYS: ${NODE_KEYS:?set NODE_KEYS in .env}
+      GATEWAY_BUFFER_DB: /data/buffer.sqlite3
+    depends_on:
+      - backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - gateway-buffer:/data
+    # Hardware mode: run on a Raspberry Pi with the compose override below,
+    # then map /dev/spidev0.0 into the container and set SIMULATE=false:
+    #   devices:
+    #     - /dev/spidev0.0:/dev/spidev0.0
+    #     - /dev/spidev0.1:/dev/spidev0.1
+    #   environment:
+    #     SIMULATE: "false"
+    command: ["python", "-m", "gateway_pkg.main", "--simulate"]
+
+volumes:
+  postgres-data:
+  gateway-buffer:

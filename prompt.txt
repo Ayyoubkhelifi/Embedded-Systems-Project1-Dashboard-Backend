@@ -1,0 +1,333 @@
+# Project: IoT Environmental Monitoring System
+
+Act as a senior IoT engineer, backend developer, database architect, and frontend engineer. Build a complete, reliable, secure, and responsive environmental monitoring system using ESP32 sensors, LoRa communication, a Raspberry Pi gateway, a backend API, a database, and a web dashboard.
+
+## 1. System Architecture
+
+Implement this architecture:
+
+ESP32 + Sensors → LoRa → Raspberry Pi Gateway → Backend API → Database → Web Dashboard
+
+The ESP32 collects data from:
+- DHT11: temperature and humidity.
+- MQ-2: analog gas/smoke sensor readings.
+- Water sensor: water detection or level readings, depending on the sensor type.
+
+The ESP32 transmits readings wirelessly through its LoRa module to a Raspberry Pi equipped with a compatible LoRa module.
+
+The Raspberry Pi receives and validates messages, then forwards them to the backend over HTTP.
+
+The backend stores the readings and manages device status and alerts. The frontend retrieves historical data and receives real-time updates.
+
+Keep the architecture modular so that components can be tested independently.
+
+## 2. Technology Stack
+
+Use the following technologies unless the existing repository requires a justified alternative:
+
+- ESP32 firmware: C++ with the Arduino framework.
+- LoRa: compatible SX1276/SX1278 radio modules.
+- Raspberry Pi gateway: Python.
+- Backend: Python FastAPI.
+- Database: PostgreSQL.
+- Frontend: Next.js and React with TypeScript.
+- Charts: Recharts.
+- Real-time updates: WebSockets.
+- Database migrations: Alembic.
+- Deployment: Docker Compose where appropriate.
+
+If an existing project already uses a different backend or frontend stack, inspect it first and preserve its established architecture unless there is a compelling reason to change it.
+
+## 3. ESP32 Firmware
+
+Create firmware that:
+
+1. Reads temperature and humidity from the DHT11.
+2. Reads the MQ-2 analog output.
+3. Reads the water sensor.
+4. Validates sensor readings and detects sensor errors.
+5. Builds a compact message containing:
+   - Device ID.
+   - Unique or increasing packet sequence number.
+   - Sensor readings.
+   - Sensor validity flags.
+   - Optional device battery voltage if hardware supports measurement.
+6. Transmits readings through LoRa at a configurable interval.
+7. Supports configurable LoRa frequency, spreading factor, bandwidth, coding rate, and transmission power, subject to the applicable regional radio regulations.
+8. Handles failed sensor readings without crashing.
+9. Supports acknowledgements and bounded retries for important messages.
+10. Avoids blocking delays where practical.
+
+Do not assume the exact water sensor type or pin assignments. Make these configurable and document the hardware assumptions.
+
+Do not report MQ-2 readings as accurate gas concentrations in ppm unless a suitable calibration procedure and supporting hardware are implemented.
+
+Include instructions for installing libraries, wiring sensors, configuring pins, and flashing the firmware.
+
+## 4. Raspberry Pi LoRa Gateway
+
+Develop a Python gateway service that:
+
+1. Receives packets through the LoRa radio.
+2. Decodes and validates the packet format.
+3. Records reception timestamps, RSSI, and SNR when supported by the radio library.
+4. Rejects malformed or invalid messages.
+5. Detects duplicate packets using device IDs and sequence numbers.
+6. Forwards valid readings to the backend using authenticated HTTPS when deployed remotely.
+7. Retries temporary HTTP failures with exponential backoff and jitter.
+8. Buffers unsent messages locally using SQLite so temporary network failures do not immediately lose data.
+9. Removes buffered messages only after the backend confirms successful ingestion.
+10. Logs errors and recovers gracefully from network or radio interruptions.
+
+Provide a configurable backend URL, device credentials, radio settings, and polling/transmission interval.
+
+Document Raspberry Pi GPIO/SPI configuration and the exact radio-library assumptions.
+
+## 5. Backend API
+
+Build a modular FastAPI application with validation, structured logging, and clear error handling.
+
+Implement endpoints such as:
+
+- `POST /api/v1/telemetry`: ingest sensor readings.
+- `GET /api/v1/telemetry/latest`: retrieve the latest readings.
+- `GET /api/v1/telemetry/history`: retrieve readings within a time range.
+- `GET /api/v1/devices`: list registered devices.
+- `GET /api/v1/devices/{device_id}`: retrieve device details and status.
+- `GET /api/v1/alerts`: retrieve alerts with filtering and pagination.
+- `PATCH /api/v1/alerts/{alert_id}`: acknowledge an alert.
+- `GET /api/v1/health`: check service health.
+
+Add a WebSocket endpoint for real-time telemetry and alert updates.
+
+Requirements:
+- Validate every request using Pydantic schemas.
+- Authenticate gateway ingestion requests using per-gateway credentials or an appropriate token mechanism.
+- Enforce role-based access control for dashboard users.
+- Apply rate limits and request-size limits.
+- Use parameterized database operations through the ORM.
+- Implement pagination and time-range validation.
+- Make ingestion idempotent so gateway retries do not create duplicate readings.
+- Keep secrets in environment variables, never committed to source control.
+- Provide database migrations and seed data for development.
+- Implement consistent API error responses.
+- Add unit and integration tests.
+
+## 6. Database Design
+
+Create the following tables with appropriate types, constraints, indexes, and relationships.
+
+### Devices
+- ID.
+- Device name.
+- Device type.
+- Location or installation description.
+- Registration date.
+- Last-seen timestamp.
+- Current status.
+- Last received sequence number where appropriate.
+
+### Sensor Readings
+- ID.
+- Device ID.
+- Packet sequence number.
+- Temperature in Celsius.
+- Relative humidity percentage.
+- Raw MQ-2 reading.
+- Gas alarm state.
+- Raw water sensor reading when applicable.
+- Water detection state when applicable.
+- Sensor validity flags.
+- RSSI.
+- SNR.
+- Gateway reception timestamp.
+- Device timestamp if available and trustworthy.
+
+Use a unique constraint on the appropriate device and packet identifiers to support idempotent ingestion.
+
+### Alerts
+- ID.
+- Device ID.
+- Alert type.
+- Severity.
+- Description.
+- Creation timestamp.
+- Acknowledgement timestamp.
+- Acknowledged-by user, if applicable.
+- Status.
+
+### Users
+- ID.
+- Username or email.
+- Secure password hash.
+- Role.
+- Creation timestamp.
+- Account status.
+
+Do not store plaintext passwords.
+
+Add indexes for device IDs, timestamps, alert status, and frequently queried fields.
+
+Use UTC internally for timestamps and display them in the dashboard's configured local timezone.
+
+## 7. Alert System
+
+Implement configurable rules for:
+- High temperature.
+- High humidity, if required.
+- MQ-2 readings exceeding a configured threshold.
+- Water detection.
+- Missing telemetry or offline devices.
+- Sensor malfunction.
+
+Requirements:
+- Make thresholds configurable rather than hard-coded.
+- Use hysteresis or sustained readings where appropriate to reduce alert flapping.
+- Prevent duplicate alerts for the same continuously active condition.
+- Allow alerts to be acknowledged.
+- Record alert history.
+- Clearly distinguish raw sensor readings from calibrated measurements.
+- Label MQ-2 threshold alerts as preliminary gas/smoke indications, not certified safety alarms.
+
+Do not treat this prototype as a certified life-safety system.
+
+## 8. Dashboard UI/UX
+
+Build a polished, responsive dashboard with a clean, professional environmental-monitoring interface.
+
+### Overview
+Display:
+- Total registered devices.
+- Online and offline devices.
+- Latest temperature and humidity.
+- Latest MQ-2 reading.
+- Water detection status.
+- Active alerts.
+- Last successful telemetry reception.
+
+### Live Monitoring
+- Automatically update values through WebSockets.
+- Display current readings with units.
+- Display device ID and last update time.
+- Show RSSI and SNR.
+- Indicate loading, stale data, disconnected devices, and API failures.
+
+### Historical Analytics
+- Temperature and humidity line charts.
+- MQ-2 reading history.
+- Water detection history.
+- Configurable time filters.
+- Device-specific filtering.
+- Tooltips, readable axes, and empty states.
+
+### Devices
+- Device inventory.
+- Online/offline status.
+- Last-seen timestamp.
+- Latest readings.
+- Device detail page with historical telemetry.
+
+### Alerts
+- Active and resolved alerts.
+- Severity indicators.
+- Device and date filters.
+- Alert acknowledgement.
+- Clear descriptions and timestamps.
+
+### Settings
+- Configurable thresholds.
+- Telemetry freshness timeout.
+- Display preferences where appropriate.
+
+UI requirements:
+- Responsive on mobile, tablet, and desktop.
+- Accessible labels, keyboard navigation, and sufficient contrast.
+- Consistent loading, error, and empty states.
+- No fake live data in production.
+- Use realistic mock data only in an explicitly labeled development/demo mode.
+- Do not expose credentials, internal stack traces, or sensitive infrastructure information.
+
+## 9. Reliability and Security
+
+Implement:
+- HTTPS in production.
+- Strong authentication and authorization.
+- Password hashing using a modern password-hashing algorithm.
+- Input validation and SQL injection protection.
+- Secure CORS configuration.
+- Environment-based configuration.
+- Database backups and restore documentation.
+- Gateway offline buffering.
+- Duplicate packet detection.
+- Structured logs and error handling.
+- Health checks and graceful shutdown.
+- Data retention configuration.
+- Tests for malformed packets, duplicate ingestion, sensor failures, gateway disconnection, and database errors.
+
+LoRa does not automatically provide application-level encryption or authentication. Document the threat model and implement appropriate packet authentication or integrity protection for the radio link where supported.
+
+## 10. Testing
+
+Provide automated tests covering:
+
+1. Valid telemetry ingestion.
+2. Invalid sensor payloads.
+3. Duplicate packets.
+4. Unauthorized gateway requests.
+5. Historical telemetry filtering.
+6. Alert generation and acknowledgement.
+7. Device offline detection.
+8. WebSocket updates.
+9. Database connection failures.
+10. Gateway retry and local buffering behavior.
+
+Provide a development mode that can simulate telemetry without physical hardware. Clearly separate simulated readings from real device data.
+
+## 11. Deployment and Documentation
+
+Produce:
+- A clear project directory structure.
+- `.env.example` containing placeholders only.
+- Docker Compose configuration for services that can reasonably run in containers.
+- Database migration instructions.
+- Backend installation and startup instructions.
+- Frontend installation and startup instructions.
+- ESP32 flashing instructions.
+- Raspberry Pi gateway installation instructions.
+- Reverse proxy and HTTPS deployment guidance.
+- Database backup and restore instructions.
+- API documentation.
+- Hardware wiring diagrams or clearly documented pin tables.
+- Troubleshooting guide.
+
+Do not expose PostgreSQL publicly. Restrict database access to authorized services.
+
+## 12. Development Workflow
+
+Work in phases rather than generating the entire system blindly.
+
+Phase 1: Inspect the repository, identify existing code, and propose the architecture.
+
+Phase 2: Define the telemetry packet format and database schema.
+
+Phase 3: Implement and test the backend and database.
+
+Phase 4: Implement the Raspberry Pi gateway and its retry/buffering mechanisms.
+
+Phase 5: Implement the dashboard and real-time updates.
+
+Phase 6: Implement or integrate ESP32 firmware.
+
+Phase 7: Integrate the complete system and perform end-to-end tests.
+
+Phase 8: Prepare deployment and documentation.
+
+At the beginning:
+- Inspect existing files and dependencies.
+- Identify missing information about the hardware.
+- Present the planned architecture, file structure, and implementation phases.
+- Identify any assumptions before making major design decisions.
+
+Do not overwrite existing working code without understanding it. Keep the implementation modular, maintainable, and easy to test.
+
+After each phase, run relevant tests, report the results, and list the next steps.

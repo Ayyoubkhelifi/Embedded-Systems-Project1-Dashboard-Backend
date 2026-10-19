@@ -18,6 +18,7 @@ htmlcov/
 # SQLite local artifacts
 *.sqlite3
 *.db
+.demo/
 
 # Node
 node_modules/

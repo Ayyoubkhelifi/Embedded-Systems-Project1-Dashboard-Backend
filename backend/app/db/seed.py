@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.core.security import gateway_key_fingerprint, hash_password
 from app.db.session import get_sessionmaker
-from app.models import Base, Device, Gateway, User
+from app.models import Device, Gateway, User
 from app.services.settings_service import seed_defaults
 
 

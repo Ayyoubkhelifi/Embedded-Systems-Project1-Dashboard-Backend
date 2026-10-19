@@ -15,7 +15,7 @@ config = context.config
 def _sync_url() -> str:
     url = os.environ.get("DATABASE_URL", get_settings().database_url)
     if "+aiosqlite" in url:
-        return url.replace("+aiosqlite", "+sqlite")
+        return url.replace("+aiosqlite", "")
     if "+asyncpg" in url:
         return url.replace("+asyncpg", "+psycopg2")
     return url
